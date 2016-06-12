@@ -1,6 +1,6 @@
 import { Tree, utils } from 'phylocanvas';
 
-const { translatePoint, getPixelRatio } = utils.canvas;
+const { getPixelRatio, translatePoint } = utils.canvas;
 
 class MeasureTool {
 
@@ -8,10 +8,12 @@ class MeasureTool {
     this.tree = tree;
     this.canvas = tree.canvas.canvas;
     this.cxt = tree.canvas;
+    this.pixelRatio = getPixelRatio(this.cxt);
 
     this.isActive = isActive;
     this.fontSize = fontSize;
     this.crosshairSize = crosshairSize;
+    this.guidelines = true;
 
     this.tree.addListener('click', event => this.onClick(event));
     this.tree.addListener('mousemove', event => this.onMousemove(event));
@@ -52,7 +54,8 @@ class MeasureTool {
     if (this.clickPoint) {
       this.clickPoint = null;
     } else {
-      this.clickPoint = { x: event.layerX, y: event.layerY };
+      this.clickPoint =
+        translatePoint({ x: event.layerX, y: event.layerY }, this.tree);
     }
     this.tree.draw();
   }
@@ -60,7 +63,8 @@ class MeasureTool {
   onMousemove(event) {
     if (!this.isActive) return;
 
-    this.mousePoint = { x: event.layerX, y: event.layerY };
+    this.mousePoint =
+        translatePoint({ x: event.layerX, y: event.layerY }, this.tree);
     this.xAxisOnly = !this.yAxisOnly && event.metaKey || event.ctrlKey;
     this.yAxisOnly = !this.xAxisOnly && event.shiftKey;
   }
@@ -87,40 +91,57 @@ class MeasureTool {
   draw() {
     if (!this.isActive) return;
 
-    const { tree, cxt, fontSize, crosshairSize,
+    const { tree, canvas, cxt, fontSize, crosshairSize, guidelines,
             xAxisOnly, yAxisOnly, clickPoint, mousePoint } = this;
+
+    if (guidelines && mousePoint) {
+      const top = (0 - tree.offsety * 2) / tree.zoom;
+      const bottom = (canvas.height - tree.offsety * 2) / tree.zoom;
+      const left = (0 - tree.offsetx * 2) / tree.zoom;
+      const right = (canvas.width - tree.offsetx * 2) / tree.zoom;
+      cxt.beginPath();
+      if (!yAxisOnly) {
+        cxt.moveTo(mousePoint.x, top);
+        cxt.lineTo(mousePoint.x, bottom);
+        cxt.stroke();
+      }
+      if (!xAxisOnly) {
+        cxt.moveTo(left, mousePoint.y);
+        cxt.lineTo(right, mousePoint.y);
+        cxt.stroke();
+      }
+      cxt.closePath();
+    }
 
     if (!clickPoint) return;
 
     this.setStyle();
 
-    this.drawCrosshair(clickPoint.x, clickPoint.y, crosshairSize);
+    this.drawCrosshair(clickPoint, crosshairSize);
 
     if (!mousePoint) return;
 
     // draw a line connecting clicked point and current mouse point
-    const startX = clickPoint.x;
-    const startY = clickPoint.y;
-    const endY = xAxisOnly ? clickPoint.y : mousePoint.y;
-    const endX = yAxisOnly ? clickPoint.x : mousePoint.x;
-    const startCanvasPoint = translatePoint(clickPoint, tree);
-    const endCanvasPoint = translatePoint({ x: endX, y: endY }, tree);
+    const start = clickPoint;
+    const end = { x: yAxisOnly ? clickPoint.x : mousePoint.x,
+                  y: xAxisOnly ? clickPoint.y : mousePoint.y };
     cxt.beginPath();
-    cxt.moveTo(startCanvasPoint.x, startCanvasPoint.y);
-    cxt.lineTo(endCanvasPoint.x, endCanvasPoint.y);
+    cxt.moveTo(start.x, start.y);
+    cxt.lineTo(end.x, end.y);
     cxt.stroke();
     cxt.closePath();
 
     // caluclate distance
-    const hypot = Math.hypot(startX - endX, startY - endY);
-    const distance =
-      (getPixelRatio(cxt) * hypot / tree.branchScalar / tree.zoom).toFixed(6);
+    const hypot = Math.hypot(start.x - end.x, start.y - end.y);
+    const distance = (hypot / tree.branchScalar).toFixed(6);
 
     // clear distance label background
     const labelWidth = cxt.measureText(distance).width;
     const labelHeight = fontSize / tree.zoom;
-    const labelPoint =
-      translatePoint({ x: (startX + endX) / 2, y: (startY + endY) / 2 }, tree);
+    const labelPoint = {
+      x: (start.x + end.x) / 2,
+      y: (start.y + end.y) / 2,
+    };
     cxt.clearRect(labelPoint.x - labelWidth / 2,
       labelPoint.y - labelHeight / 2, labelWidth, labelHeight);
 
@@ -128,20 +149,16 @@ class MeasureTool {
     cxt.fillText(distance, labelPoint.x, labelPoint.y);
 
     if (xAxisOnly || yAxisOnly) {
-      this.drawCrosshair(endX, endY, crosshairSize);
+      this.drawCrosshair(end, crosshairSize);
     }
   }
 
-  drawCrosshair(x, y, size) {
-    const centre = translatePoint({ x, y }, this.tree);
-    const start = translatePoint({
-      x: x - size,
-      y: y - size },
-    this.tree);
-    const end = translatePoint({
-      x: x + size,
-      y: y + size },
-    this.tree);
+  drawCrosshair(centre, size) {
+    const { tree, pixelRatio } = this;
+    const start = { x: centre.x - size / tree.zoom * pixelRatio,
+                    y: centre.y - size / tree.zoom * pixelRatio };
+    const end = { x: centre.x + size / tree.zoom * pixelRatio,
+                  y: centre.y + size / tree.zoom * pixelRatio };
     this.cxt.beginPath();
     this.cxt.moveTo(centre.x, start.y);
     this.cxt.lineTo(centre.x, end.y);
