@@ -2,18 +2,28 @@ import { Tree, utils } from 'phylocanvas';
 
 const { getPixelRatio, translatePoint } = utils.canvas;
 
+const DEFAULTS = {
+  fillStyle: 'black',
+  strokeStyle: 'blue',
+  lineWidth: 2,
+  fontSize: 18,
+  fontFamily: 'Sans-serif',
+  textBaseline: 'middle',
+  textAlign: 'center',
+  crosshairSize: 10,
+  guidelines: true,
+};
+
 class MeasureTool {
 
-  constructor(tree, { isActive = false, fontSize = 24, crosshairSize = 10 }) {
+  constructor(tree, options = {}) {
     this.tree = tree;
     this.canvas = tree.canvas.canvas;
     this.cxt = tree.canvas;
     this.pixelRatio = getPixelRatio(this.cxt);
 
-    this.isActive = isActive;
-    this.fontSize = fontSize;
-    this.crosshairSize = crosshairSize;
-    this.guidelines = true;
+    Object.assign(this, DEFAULTS, options);
+    this.isActive = false;
 
     this.tree.addListener('click', event => this.onClick(event));
     this.tree.addListener('mousemove', event => this.onMousemove(event));
@@ -80,25 +90,17 @@ class MeasureTool {
     this.tree.draw();
   }
 
-  setStyle() {
-    this.cxt.strokeStyle = 'blue';
-    this.cxt.lineWidth = Math.max(0.01, 2 / this.tree.zoom);
-    this.cxt.textBaseline = 'middle';
-    this.cxt.textAlign = 'center';
-    this.cxt.font = `${this.fontSize / this.tree.zoom}px Sans-serif`;
-  }
-
   draw() {
     if (!this.isActive) return;
 
-    const { tree, canvas, cxt, fontSize, crosshairSize, guidelines,
+    const { tree, canvas, cxt, pixelRatio, fontSize, crosshairSize, guidelines,
             xAxisOnly, yAxisOnly, clickPoint, mousePoint } = this;
 
     if (guidelines && mousePoint) {
-      const top = (0 - tree.offsety * 2) / tree.zoom;
-      const bottom = (canvas.height - tree.offsety * 2) / tree.zoom;
-      const left = (0 - tree.offsetx * 2) / tree.zoom;
-      const right = (canvas.width - tree.offsetx * 2) / tree.zoom;
+      const top = (0 - tree.offsety * pixelRatio) / tree.zoom;
+      const bottom = (canvas.height - tree.offsety * pixelRatio) / tree.zoom;
+      const left = (0 - tree.offsetx * pixelRatio) / tree.zoom;
+      const right = (canvas.width - tree.offsetx * pixelRatio) / tree.zoom;
       cxt.beginPath();
       if (!yAxisOnly) {
         cxt.moveTo(mousePoint.x, top);
@@ -115,7 +117,13 @@ class MeasureTool {
 
     if (!clickPoint) return;
 
-    this.setStyle();
+    // set style
+    cxt.fillStyle = this.fillStyle;
+    cxt.strokeStyle = this.strokeStyle;
+    cxt.lineWidth = Math.max(0.01, this.lineWidth / tree.zoom);
+    cxt.textBaseline = this.textBaseline;
+    cxt.textAlign = this.textAlign;
+    cxt.font = `${fontSize / tree.zoom}px ${this.fontFamily}`;
 
     this.drawCrosshair(clickPoint, crosshairSize);
 
@@ -174,7 +182,7 @@ export default function plugin(decorate) {
   decorate(this, 'createTree', (delegate, args) => {
     const tree = delegate(...args);
     const [ , config = {} ] = args;
-    tree.measureTool = new MeasureTool(tree, config.measureTool || {});
+    tree.measureTool = new MeasureTool(tree, config.measureTool);
     return tree;
   });
 
