@@ -1,3 +1,4 @@
+const path = require('path');
 const webpack = require('webpack');
 
 const loaders = [
@@ -27,6 +28,7 @@ const buildConfig = {
   output: {
     filename: 'index.js',
     libraryTarget: 'umd',
+    path: path.join(__dirname, 'dist'),
   },
   module: {
     loaders,
